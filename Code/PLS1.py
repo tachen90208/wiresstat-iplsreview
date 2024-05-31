@@ -6,6 +6,12 @@ from scipy.sparse.linalg import svds
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_array
 from sklearn.utils.validation import FLOAT_DTYPES
+from scipy.linalg import pinv
+
+def _CentralizedData(x):
+    x_mean = x.mean(axis=0)
+    xc = x - x_mean
+    return xc, x_mean
 
 class PLS1(BaseEstimator):
     """PLS1(close form).
@@ -29,17 +35,6 @@ class PLS1(BaseEstimator):
         self.n = 0
         self.copy = copy
 
-    def CentralizedData(self,X,y):
-        # y n*m, ave 1*m
-        # X n*p, ave 1*p
-        X_mean = np.mean(X,axis=0)
-        Xc = np.zeros(X.shape)
-        for i in np.arange(X.shape[0]):
-            Xc[i,:] = X[i,:] - X_mean
-
-        yc = y - np.mean(y)
-        return Xc,yc
-
     def _Arnoldi(self,A,v):
         W_rotations = np.zeros((self.n_components, self.n_features))
         W_rotations[0,:] = v/norm(v)
@@ -58,10 +53,11 @@ class PLS1(BaseEstimator):
             self.C = np.zeros((self.n_features, self.n_features))
             self.S = np.zeros((self.n_features,))
 
-        Xc,yc = self.CentralizedData(X,y)
-        self.C = Xc.T @ Xc/self.n
+        Xc, self._x_mean = _CentralizedData(X)
+        yc, self._y_mean = _CentralizedData(y)
+        self.C = Xc.T @ Xc
         self.S = Xc.T @ yc
-        self.W = self._Arnoldi(self.C,self.S)
+        self.W = self._Arnoldi(self.C/self.n,self.S)
         return self
 
     def transform(self, X, copy=True):
@@ -71,18 +67,27 @@ class PLS1(BaseEstimator):
         X -=  np.mean(X,axis=0)
         return np.dot(X, self.W)
 
-    def PLSR_coef(self,X,y,copy=True):
+    def _comp_coef(self):
+
+
+        self._y_loadings = np.dot(self.S.T, self.W)
+
+        self.coef_ =  np.dot(
+            self.W,
+            pinv( np.dot(self.W.T, np.dot(self.C, self.W)))
+        )
+        self.coef_ = np.dot(self.coef_, self._y_loadings.T)
+        self.intercept_ = self._y_mean
+        return self
+
+    def predict(self, X, copy=True):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
-        X_mean = np.mean(X,axis=0)
-        for i in np.arange(X.shape[0]):
-            X[i,:] -= X_mean
 
-        yc = y-np.mean(y)
-
-        T    = X @ self.W   # score matrix of Xc
-        Qt   = T.T @ yc  # transpose of loading matrix of yc
-        return  self.W  @ inv( T.T @ T ) @ Qt
-
+        self._comp_coef()
+        Xc,_ = _CentralizedData(X)
+        ypred = Xc @ self.coef_
+        ypred += self.intercept_
+        return ypred
 
 class IPLS1(BaseEstimator):
     """IPLS1(close form).
@@ -104,29 +109,14 @@ class IPLS1(BaseEstimator):
         self.__name__ = ' (IPLS1)'
         self.n_components = n_components
         self.n = 0
-        self.mu_x = 0
-        self.mu_y = 0
+        self._x_mean = 0
+        self._y_mean = 0
         self.copy = copy
-
-    def CentralizedData(self,X,y):
-        # y n*m, ave 1*m
-        # X n*p, ave 1*p
-        X_mean = np.mean(X,axis=0)
-        Xc = np.zeros(X.shape)
-        for i in np.arange(X.shape[0]):
-            Xc[i,:] = X[i,:] - X_mean
-
-        yc = y - np.mean(y)
-        return Xc,yc
 
     def _Comp_ScatterMats(self,X,y):
         N = X.shape[0]
-        mu_x = np.mean(X,axis=0)
-        Xc = np.zeros(X.shape)
-        for i in np.arange(N):
-            Xc[i,:] = X[i,:] - mu_x
-        mu_y = np.mean(y)
-        yc = y - mu_y
+        Xc, mu_x = _CentralizedData(X)
+        yc, mu_y = _CentralizedData(y)
         C = Xc.T @ Xc/N
         S = Xc.T @ yc
         return N,C,S,mu_x,mu_y
@@ -150,7 +140,7 @@ class IPLS1(BaseEstimator):
             self.C = np.zeros((self.n_features, self.n_features))
             self.S = np.zeros((self.n_features,))
 
-        n_new, C2, S2, mu_x2, mu_y2 = \
+        n_new, C2, S2, _x_mean2, _y_mean2 = \
             self._Comp_ScatterMats(X,y)
 
         # update the number of sample
@@ -158,13 +148,13 @@ class IPLS1(BaseEstimator):
         self.n += n_new
         f1,f2 = n_old/self.n, n_new/self.n
         # update the scatter matrices
-        diff_mu_x = self.mu_x - mu_x2
-        diff_mu_y = self.mu_y - mu_y2
-        self.C = f1*self.C + f2*C2 + f1*f2*np.outer(diff_mu_x, diff_mu_x)
-        self.S = self.S + S2 + (f1*f2*self.n)*diff_mu_y*diff_mu_x
+        diff_x_mean = self._x_mean - _x_mean2
+        diff_y_mean = self._y_mean - _y_mean2
+        self.C = f1*self.C + f2*C2 + f1*f2*np.outer(diff_x_mean, diff_x_mean)
+        self.S = self.S + S2 + (f1*f2*self.n)*diff_y_mean*diff_x_mean
         # update the mean
-        self.mu_x = f1*self.mu_x + f2*mu_x2
-        self.mu_y = f1*self.mu_y + f2*mu_y2
+        self._x_mean = f1*self._x_mean + f2*_x_mean2
+        self._y_mean = f1*self._y_mean + f2*_y_mean2
         self.W = self._Arnoldi(self.C,self.S)
         return self
 
@@ -172,17 +162,25 @@ class IPLS1(BaseEstimator):
         """Apply the dimension reduction learned on the train data."""
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
-        X -= self.mu_x
+        X -= self._x_mean
         return np.dot(X, self.W)
 
-    def PLSR_coef(self,X,y,copy=True):
+    def _comp_coef(self):
+        self._y_loadings = np.dot(self.S.T, self.W)
+
+        self.coef_ =  np.dot(
+            self.W,
+            pinv( np.dot(self.W.T, np.dot(self.C*self.n, self.W)))
+        )
+        self.coef_ = np.dot(self.coef_, self._y_loadings.T)
+        self.intercept_ = self._y_mean
+        return self
+
+    def predict(self, X, copy=True):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
-        X_mean = np.mean(X,axis=0)
-        for i in np.arange(X.shape[0]):
-            X[i,:] -= X_mean
 
-        yc = y-np.mean(y)
-
-        T    = X @ self.W   # score matrix of Xc
-        Qt   = T.T @ yc  # transpose of loading matrix of yc
-        return  self.W  @ inv( T.T @ T ) @ Qt
+        self._comp_coef()
+        Xc,_ = _CentralizedData(X)
+        ypred = Xc @ self.coef_
+        ypred += self.intercept_
+        return ypred

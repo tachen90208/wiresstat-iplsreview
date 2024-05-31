@@ -6,7 +6,21 @@ from scipy.sparse.linalg import svds
 from sklearn.base import BaseEstimator
 from sklearn.utils import check_array
 from sklearn.utils.validation import FLOAT_DTYPES
+from scipy.linalg import pinv
 from pytictoc import TicToc
+
+def _CentralizedData(x):
+    x_mean = x.mean(axis=0)
+    xc = x - x_mean
+    return xc, x_mean
+
+def _ScatterMats(X,Y):
+    N = X.shape[0]
+    Xc, x_mean = _CentralizedData(X)
+    Yc, y_mean = _CentralizedData(Y)
+    C = Xc.T @ Xc / N
+    S = Xc.T @ Yc
+    return N, C, S, x_mean, y_mean
 
 class ISIMPLS(BaseEstimator):
     """ISIMPLS.
@@ -28,24 +42,12 @@ class ISIMPLS(BaseEstimator):
         self.__name__ = ' (ISIMPLS)'
         self.n_components = n_components
         self.n = 0
-        self.mu_x = 0
-        self.mu_y = 0
+        self._x_mean = 0
+        self._y_mean = 0
         self.copy = copy
         self.W = None
         self.C = None
         self.S = None
-
-    def _PLS1_ScatterMats(self,X,y):
-        N = X.shape[0]
-        mu_x = np.mean(X,axis=0)
-        Xc = np.zeros(X.shape)
-        for i in np.arange(N):
-            Xc[i,:] = X[i,:] - mu_x
-        mu_y = np.mean(y)
-        yc = y - mu_y
-        C = Xc.T @ Xc/N
-        S = Xc.T @ yc
-        return N,C,S,mu_x,mu_y
 
     def _PLS1_ProjMat(self,S):
         W_rotations = np.zeros((self.n_components,self.n_features))
@@ -55,55 +57,71 @@ class ISIMPLS(BaseEstimator):
         p = self.C @ W_rotations[0,:]
         V[0,:] = p/norm(p)
         S = S - V[0,:]*np.dot(V[0,:],S)
+        self.x_loadings_[:,0] = p
         for k in range(1,self.n_components):
             W_rotations[k,:] = S/norm(S)
             p = self.C @ W_rotations[k,:]
             V[k,:] = p - V[:k,:].T @ (V[:k,:] @ p)
             V[k,:] = V[k,:]/norm(V[k,:])
             S = S - V[k,:]*np.dot(V[k,:],S)
+            self.x_loadings_[:,k] = p
         return W_rotations.T
 
     def fit(self,X,y):
         X = check_array(X, dtype=FLOAT_DTYPES, copy=self.copy)
         # y = check_array(y, dtype=FLOAT_DTYPES, copy=self.copy)
-        if self.n==0:
+        if self.n == 0:
             self.n_features = X.shape[1]
+            self.x_loadings_ = np.zeros((self.n_features, self.n_components))
+            self.y_loadings_ = np.zeros((1, self.n_components))
             self.C = np.zeros((self.n_features, self.n_features))
             self.S = np.zeros((self.n_features,))
 
-        n_new,C2,S2,mu_x2,mu_y2 = self._PLS1_ScatterMats(X,y)
+        n_new,C2,S2,_x_mean2,_y_mean2 = _ScatterMats(X,y)
         n_old = self.n
         self.n += n_new
         f1,f2 = n_old/self.n, n_new/self.n
         # update the scatter matrices
-        diff_mu_x = self.mu_x - mu_x2
-        diff_mu_y = self.mu_y - mu_y2
-        self.C = f1*self.C + f2*C2 + f1*f2*np.outer(diff_mu_x, diff_mu_x)
-        self.S = self.S + S2 + (f1*f2*self.n)*diff_mu_y*diff_mu_x
+        diff_x_mean = self._x_mean - _x_mean2
+        diff_y_mean = self._y_mean - _y_mean2
+        self.C = f1*self.C + f2*C2 + f1*f2*np.outer(diff_x_mean, diff_x_mean)
+        self.S = self.S + S2 + (f1*f2*self.n)*diff_y_mean*diff_x_mean
         # update the mean
-        self.mu_x = f1*self.mu_x + f2*mu_x2
-        self.mu_y = f1*self.mu_y + f2*mu_y2
+        self._x_mean = f1*self._x_mean + f2*_x_mean2
+        self._y_mean = f1*self._y_mean + f2*_y_mean2
         # computer the new project matrxi
-        self.W = self._PLS1_ProjMat(self.S)
+        self.W = self._PLS1_ProjMat(self.S.copy())
         return self
 
     def transform(self, X, Y=None, copy=True):
         """Apply the dimension reduction learned on the train data."""
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
         X -= self.mu_x
-        return X @ self.W
+        return X @ self.x_rotations_
 
-    def PLSR_coef(self,X,y,copy=True):
+    def _comp_coef(self):
+
+        self.x_rotations_ = np.dot(
+            self.W,
+            pinv(np.dot(self.W.T,
+                         np.dot(self.n*self.C, self.W)), check_finite=False),
+        )
+
+        self.y_loadings_ = np.dot(self.S.T, self.W)
+
+        self.coef_ = np.dot(self.x_rotations_, self.y_loadings_.T)
+
+        self.intercept_ = self._y_mean
+        return self
+
+    def predict(self, X, copy=True):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
-        # y = check_array(y, copy=copy, dtype=FLOAT_DTYPES)
 
-        for i in np.arange(X.shape[0]):
-            X[i,:] -= self.mu_x
-        yc = y - np.mean(y)
-
-        T    = X @ self.W   # score matrix of Xc
-        Qt   = T.T @ yc  # transpose of loading matrix of yc
-        return self.W  @ inv( T.T @ T ) @ Qt
+        self._comp_coef()
+        Xc,_ = _CentralizedData(X)
+        ypred = Xc @ self.coef_
+        ypred += self.intercept_
+        return ypred
 
 class ISIMPLS2(BaseEstimator):
     """ISIMPLS.
@@ -125,8 +143,8 @@ class ISIMPLS2(BaseEstimator):
         self.__name__ = ' (ISIMPLS)'
         self.n_components = n_components
         self.n = 0
-        self.mu_x = 0
-        self.mu_y = 0
+        self._x_mean = 0
+        self._y_mean = 0
         self.copy = copy
         self.W = None
         self.C = None
@@ -135,22 +153,6 @@ class ISIMPLS2(BaseEstimator):
         self.tic_upd = TicToc()
         self.tim_svd = 0
         self.tim_upd = 0
-
-    def _PLS2_ScatterMats(self,X,Y):
-        N = X.shape[0]
-        mu_x = np.mean(X,axis=0)
-        Xc = np.zeros(X.shape)
-        for i in np.arange(N):
-            Xc[i,:] = X[i,:] - mu_x
-
-        mu_y = np.mean(Y,axis=0)
-        Yc = np.zeros(Y.shape)
-        for i in np.arange(N):
-            Yc[i,:] = Y[i,:] - mu_y
-
-        C = Xc.T @ Xc/N
-        S = Xc.T @ Yc
-        return N,C,S,mu_x,mu_y
 
     def _PLS2_ProjMat(self,S):
         W_rotations = np.zeros((self.n_components,self.n_features))
@@ -184,24 +186,24 @@ class ISIMPLS2(BaseEstimator):
             self.S = np.zeros((self.n_features, self.n_features))
 
         # self.tic_upd.tic()
-        n_new,C2,S2,mu_x2,mu_y2 = self._PLS2_ScatterMats(X,Y)
+        n_new,C2,S2,_x_mean2,_y_mean2 = _ScatterMats(X,Y)
         n_old = self.n
         self.n += n_new
         f1,f2 = n_old/self.n, n_new/self.n
         # update the scatter matrices
-        diff_mu_x = self.mu_x - mu_x2
-        diff_mu_y = self.mu_y - mu_y2
+        diff_x_mean = self._x_mean - _x_mean2
+        diff_y_mean = self._y_mean - _y_mean2
 
-        self.S += S2 + (f1*f2*self.n)*np.outer(diff_mu_x, diff_mu_y)
-        # self.S += (f1*f2*self.n)*np.outer(diff_mu_x, diff_mu_y)
+        self.S += S2 + (f1*f2*self.n)*np.outer(diff_x_mean, diff_y_mean)
+        # self.S += (f1*f2*self.n)*np.outer(diff_x_mean, diff_y_mean)
 
         self.C *= f1
-        self.C += f2*C2 + f1*f2*np.outer(diff_mu_x, diff_mu_x)
-        # self.C += f1*f2*np.outer(diff_mu_x, diff_mu_x)
+        self.C += f2*C2 + f1*f2*np.outer(diff_x_mean, diff_x_mean)
+        # self.C += f1*f2*np.outer(diff_x_mean, diff_x_mean)
 
         # update the mean
-        self.mu_x = f1*self.mu_x + f2*mu_x2
-        self.mu_y = f1*self.mu_y + f2*mu_y2
+        self._x_mean = f1*self._x_mean + f2*_x_mean2
+        self._y_mean = f1*self._y_mean + f2*_y_mean2
         # self.tim_upd += self.tic_upd.tocvalue()
         # computer the new project matrxi
         self.W = self._PLS2_ProjMat(self.S.copy())
@@ -211,19 +213,38 @@ class ISIMPLS2(BaseEstimator):
         """Apply the dimension reduction learned on the train data."""
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
         X -= self.mu_x
-        return X @ self.W
+        return X @ self.x_rotations_
 
-    def PLSR_coef(self,X,Y,copy=True):
+    def _comp_coef(self):
+
+        self.x_rotations_ = np.dot(
+            self.W,
+            pinv(np.dot(self.W.T,
+                         np.dot(self.n*self.C, self.W)), check_finite=False),
+        )
+
+        self.y_loadings_ = np.dot(self.S.T, self.W)
+
+        self.coef_ = np.dot(self.x_rotations_, self.y_loadings_.T)
+
+        self.intercept_ = self._y_mean
+        return self
+
+    def predict(self, X, copy=True):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
-        # y = check_array(y, copy=copy, dtype=FLOAT_DTYPES)
-        N = X.shape[0]
-        for i in np.arange(N):
-            X[i,:] -= self.mu_x
 
-        Yc = np.zeros(Y.shape)
-        for i in np.arange(N):
-            Yc[i,:] = Y[i,:] - self.mu_y
+        self._comp_coef()
+        Xc,_ = _CentralizedData(X)
+        ypred = Xc @ self.coef_
+        ypred += self.intercept_
+        return ypred
 
-        T    = X @ self.W   # score matrix of Xc
-        Qt   = T.T @ Yc  # transpose of loading matrix of yc
-        return self.W  @ inv( T.T @ T ) @ Qt
+    def predict(self, X, copy=True):
+        X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
+
+        self._comp_coef()
+        Xc,_ = _CentralizedData(X)
+        ypred = X @ self.coef_
+        ypred = Xc @ self.coef_
+        ypred += self.intercept_
+        return ypred

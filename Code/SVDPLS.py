@@ -7,7 +7,21 @@ from sklearn.base import BaseEstimator
 from sklearn.utils import check_array
 from sklearn.utils.validation import FLOAT_DTYPES
 from scipy.sparse.linalg import svds
+from scipy.linalg import pinv
 
+def _svd_flip_1d(u,v):
+    """Same as svd_flip but works on 1d arrays, and is inplace"""
+    # svd_flip would force us to convert to 2d array and would also return 2d
+    # arrays. We don't want that.
+    biggest_abs_val_idx = np.argmax(np.abs(u))
+    sign = np.sign(u[biggest_abs_val_idx])
+    u *= sign
+    v *= sign
+
+def _CentralizedData(x):
+    x_mean = x.mean(axis=0)
+    xc = x - x_mean
+    return xc, x_mean
 
 class SVDPLS(BaseEstimator):
     """SVDPLS.
@@ -26,15 +40,15 @@ class SVDPLS(BaseEstimator):
         regularised group PLS
 
     """
-    def CentralizedData(self,X):
-        if (len(X.shape) == 1):
-            Xc = X - np.mean(X)
-        else:
-            X_mean = np.mean(X,axis=0)
-            Xc = np.zeros(X.shape)
-            for i in np.arange(X.shape[0]):
-                Xc[i,:] = X[i,:] - X_mean
-        return Xc
+    # def CentralizedData(self,X):
+    #     if (len(X.shape) == 1):
+    #         Xc = X - np.mean(X)
+    #     else:
+    #         X_mean = np.mean(X,axis=0)
+    #         Xc = np.zeros(X.shape)
+    #         for i in np.arange(X.shape[0]):
+    #             Xc[i,:] = X[i,:] - X_mean
+    #     return Xc
 
     def __init__(self, n_components=10, copy=True):
         self.__name__ = ' (SVDPLS)'
@@ -59,33 +73,24 @@ class SVDPLS(BaseEstimator):
         X = check_array(X, dtype=FLOAT_DTYPES, copy=self.copy)
         if self.n == 0:
             self.n_samples, self.n_features = X.shape
-            self.n = self.n_samples
+            self.n_labels = Y.shape[1]
 
-            if (len(Y.shape) > 1):
-                self.n_labels = Y.shape[1]
-            else:
-                self.n_labels = 1
+            self.n = self.n_samples
+            self.x_loadings_ = np.zeros((self.n_features, self.n_components))
+            self.y_loadings_ = np.zeros((self.n_labels, self.n_components))
+
             # << Initialisation >>
-            X = self.CentralizedData(X)
-            Y = self.CentralizedData(Y)
+            Xc, self._x_mean = _CentralizedData(X)
+            Yc, self._y_mean = _CentralizedData(Y)
             W_rotations = np.zeros((self.n_components, self.n_features))
 
-        S = X.T @ Y
+        S = Xc.T @ Yc
         for k in range(self.n_components):
             # << SVD >>
-            u,_,vh = svds(S, k= 1)
+            u,_,vh = svds(S, k=1)
+            # _svd_flip_1d(u,vh)
             u = u.ravel()
             v = vh.ravel()
-            # # << Sparsity step >>
-            # if (self.theta_x > 0):
-            #     u_old = np.zeros((self.n_features,))
-            #     while ( norm(u-u_old)/norm(u) > 1e-6):
-            #         wrk_u = self.soft_x(v,S)
-            #         u_old = u
-            #         u = wrk_u/norm(wrk_u)
-            #         wrk_v = self.soft_y(u,S)
-            #         v = wrk_v/norm(wrk_v)
-
             # << Adjusted weights step >>
             W_rotations[k,:] = u.ravel()
             # << Deflation step >>
@@ -96,17 +101,38 @@ class SVDPLS(BaseEstimator):
             # Y = Y - np.outer(y_scores, v)
             # S = X.T @ Y
             # ========================================
+            self.x_loadings_[:,k] = u
+            self.y_loadings_[:,k] = v
             delta = u.T @ S @ v
             S -= delta*np.outer(u,v)
             # ========================================
         self.W = W_rotations.T
         return self
 
-    def PLSR_coef(self,X,Y,copy=True):
-        X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
-        X = self.CentralizedData(X)
-        Y = self.CentralizedData(Y)
+    def _comp_coef(self):
 
-        T  = X @ self.W  # score matrix of Xc
-        Qt = T.T @ Y     # transpose of loading matrix of Yc
-        return self.W @ inv(T.T @ T) @ Qt
+        self.x_rotations_ = np.dot(
+            self.W,
+            pinv(np.dot(self.x_loadings_.T, self.W), check_finite=False),
+        )
+
+        self.coef_ = np.dot(self.x_rotations_, self.y_loadings_.T)
+        self.intercept_ = self._y_mean
+
+    def predict(self, X, copy=True):
+        X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
+
+        self._comp_coef()
+        Xc,_ = _CentralizedData(X)
+        ypred = Xc @ self.coef_
+        ypred += self.intercept_
+        return ypred
+
+    # def PLSR_coef(self,X,Y,copy=True):
+    #     X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
+    #     X = self.CentralizedData(X)
+    #     Y = self.CentralizedData(Y)
+
+    #     T  = X @ self.W  # score matrix of Xc
+    #     Qt = T.T @ Y     # transpose of loading matrix of Yc
+    #     return self.W @ inv(T.T @ T) @ Qt

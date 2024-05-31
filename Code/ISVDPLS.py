@@ -8,6 +8,11 @@ from sklearn.utils import check_array
 from sklearn.utils.validation import FLOAT_DTYPES
 from scipy.sparse.linalg import svds
 
+def _CentralizedData(x):
+    x_mean = x.mean(axis=0)
+    xc = x - x_mean
+    return xc, x_mean
+
 class ISVDPLS(BaseEstimator):
     """ISVDPLS.
 
@@ -25,15 +30,6 @@ class ISVDPLS(BaseEstimator):
         regularised group PLS
 
     """
-    def CentralizedData(self,X):
-        if (len(X.shape) == 1):
-            Xc = X - np.mean(X)
-        else:
-            X_mean = np.mean(X,axis=0)
-            Xc = np.zeros(X.shape)
-            for i in np.arange(X.shape[0]):
-                Xc[i,:] = X[i,:] - X_mean
-        return Xc
 
     def __init__(self, n_components=10, copy=True):
         self.__name__ = ' (SVDPLS)'
@@ -41,8 +37,8 @@ class ISVDPLS(BaseEstimator):
         self.n = 0
         self.copy = copy
         self.W = None
-        self.mu_x = 0
-        self.mu_y = 0
+        self._x_mean = 0
+        self._y_mean = 0
         self.H = 0
 
     def fit(self, X, Y):
@@ -54,17 +50,13 @@ class ISVDPLS(BaseEstimator):
             self.n_labels = Y.shape[1]
             self.H = min(self.n_features, self.n_labels)
             self.H = min(self.n_components, self.H)
+            self.x_loadings_ = np.zeros((self.n_features, self.n_components))
+            self.y_loadings_ = np.zeros((self.n_labels, self.n_components))
 
             W_rotations = np.zeros((self.n_components, self.n_features))
 
-            self.mu_x = np.mean(X,axis=0)
-            self.mu_y = np.mean(Y,axis=0)
-            Xc = np.zeros(X.shape)
-            for i in np.arange(self.n):
-                Xc[i,:] = X[i,:] - self.mu_x
-            Yc = np.zeros(Y.shape)
-            for i in np.arange(self.n):
-                Yc[i,:] = Y[i,:] - self.mu_y
+            Xc, self._x_mean = _CentralizedData(X)
+            Yc, self._y_mean = _CentralizedData(Y)
             self.S = Xc.T @ Yc
 
             # << SVD >>
@@ -85,7 +77,10 @@ class ISVDPLS(BaseEstimator):
                 W_rotations[k,:] = u
                 # << Deflation step >>
                 delta = u.T @ self.S @ vh.T
+                self.x_loadings_[:,k] = u
+                self.y_loadings_[:,k] = vh.ravel()
                 self.S -= delta*np.outer(u,vh)
+
             self.W = W_rotations.T
         else:
             for j in range(X.shape[0]):
@@ -93,15 +88,15 @@ class ISVDPLS(BaseEstimator):
                 x = X[j]
                 y = Y[j]
 
-                self.mu_x *= self.n-1
-                self.mu_x += x
-                self.mu_x /= self.n
-                x -= self.mu_x
+                self._x_mean *= self.n-1
+                self._x_mean += x
+                self._x_mean /= self.n
+                x -= self._x_mean
 
-                self.mu_y *= self.n-1
-                self.mu_y += y
-                self.mu_y /= self.n
-                y -= self.mu_y
+                self._y_mean *= self.n-1
+                self._y_mean += y
+                self._y_mean /= self.n
+                y -= self._y_mean
 
                 c = self.U.T @ x
                 x_perp = x - self.U @ c
@@ -123,14 +118,27 @@ class ISVDPLS(BaseEstimator):
                 A,self.Del,Bh = svds(Q,k=self.H)
                 self.U  = np.block([self.U, x_perp.reshape((-1,1))]) @ A
                 self.Vh = Bh @ np.block([[self.Vh], [y_perp]])
+
+            self.x_loadings_ = self.U
+            self.y_loadings_ = self.Vh.T
             self.W = self.U
         return self
 
-    def PLSR_coef(self,X,Y,copy=True):
-        X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
-        X = self.CentralizedData(X)
-        Y = self.CentralizedData(Y)
+    def _comp_coef(self):
+        from scipy.linalg import pinv
+        self.x_rotations_ = np.dot(
+            self.W,
+            pinv(np.dot(self.x_loadings_.T, self.W), check_finite=False),
+        )
 
-        T  = X @ self.W  # score matrix of Xc
-        Qt = T.T @ Y     # transpose of loading matrix of Yc
-        return self.W @ inv(T.T @ T) @ Qt
+        self.coef_ = np.dot(self.x_rotations_, self.y_loadings_.T)
+        self.intercept_ = self._y_mean
+
+    def predict(self, X, copy=True):
+        X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
+
+        self._comp_coef()
+        Xc,_ = _CentralizedData(X)
+        ypred = Xc @ self.coef_
+        ypred += self.intercept_
+        return ypred
