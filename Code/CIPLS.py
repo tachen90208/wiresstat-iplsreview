@@ -11,6 +11,7 @@ from sklearn.utils.validation import FLOAT_DTYPES
 from sklearn.base import BaseEstimator
 from sklearn.preprocessing import normalize
 from scipy.linalg import pinv
+from sklearn.metrics import r2_score
 import copy
 
 def _CentralizedData(x):
@@ -47,7 +48,7 @@ class CIPLS(BaseEstimator):
         self.x_loadings_ = None
         self.y_loadings_ = None
         self.eign_values = None
-        self.x_mean = None
+        self._x_mean = None
         self.p = []
 
     def normalize(self, x):
@@ -133,12 +134,11 @@ class CIPLS(BaseEstimator):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
         self._comp_coef()
-        Xc,_ = _CentralizedData(X)
-        ypred = Xc @ self.coef_
+        X -= self._x_mean
+        ypred = X @ self.coef_
         ypred += self.intercept_
         return ypred
 
     def score(self, X, y):
-        from sklearn.metrics import r2_score
         y_pred = self.predict(X)
         return r2_score(y, y_pred)

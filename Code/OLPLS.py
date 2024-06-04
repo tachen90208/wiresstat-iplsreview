@@ -13,11 +13,6 @@ from sklearn.preprocessing import normalize
 from scipy.linalg import pinv
 import copy
 
-def _CentralizedData(x):
-    x_mean = x.mean(axis=0)
-    xc = x - x_mean
-    return xc, x_mean
-
 class OLPLS(BaseEstimator):
     """Online Partial Least Squares (OLPLS).
 
@@ -62,8 +57,6 @@ class OLPLS(BaseEstimator):
         if self.n == 0:
             x = np.expand_dims(X[0], 0)
             y = np.expand_dims(Y[0], 0)
-            self._x_means = x
-            self._y_means = y
 
             self.W = np.zeros((n_features, self.n_components))
             self.P = np.zeros((n_features, self.n_components))
@@ -95,7 +88,6 @@ class OLPLS(BaseEstimator):
 
                 self.P[:, c] = 0.6 * pn
                 self.C[:, c] = 0.6 * cn
-            self.n += 1
 
         if self.n == 0:
             begin = 1
@@ -103,15 +95,9 @@ class OLPLS(BaseEstimator):
             begin = 0
 
         for i in range(begin, n_samples):
-            x = np.expand_dims(X[i], 0)
-            self._x_means = self.n*self._x_means + x
-            self._x_means /= (self.n+1)
-            x -= self._x_means
 
+            x = np.expand_dims(X[i], 0)
             y = np.expand_dims(Y[i], 0)
-            self._y_means = self.n*self._y_means + y
-            self._y_means /= (self.n+1)
-            y -= self._y_means
 
             self.S[:, 0] = self.amnesic*self.S[:, 0] + (1-self.amnesic) * (x.T * y)[:, 0]
             Suse = self.S[:, 0]
@@ -125,8 +111,8 @@ class OLPLS(BaseEstimator):
             b = np.dot(np.dot(Suse, Suse.T), wtemp)
             b = b / (np.dot(wtemp.T, wtemp))
             self.W[:, 0] = wtemp + self.mu * (a + b - lagrange*wtemp)
-            # self.W[:,0] = self.W[:,0] /norm(self.W[:,0])
-            t = np.dot(x, self.W[:, 0]) /norm(self.W[:,0])
+
+            t = np.dot(x, self.W[:, 0]) # /norm(self.W[:,0])
 
             xhat = t*self.P[:, 0]
             ep1 = x-xhat
@@ -138,22 +124,22 @@ class OLPLS(BaseEstimator):
 
             x = x - t*self.P[:, 0]
             y = y - t*self.C[:, 0]
+
             for c in range(1, self.n_components):
                 self.S[:, c] = self.amnesic*self.S[:, c] + (1-self.amnesic)*(x.T * y)[:, 0]
                 Suse = self.S[:, c]
                 wtemp = self.W[:, c]
+
                 eigval = np.dot(np.dot(np.dot(wtemp.T, Suse), Suse.T), wtemp) / (np.dot(wtemp.T, wtemp))
                 lagrange = (eigval - eigval/np.linalg.norm(wtemp))
                 a = np.dot(np.dot(np.dot(np.dot(-wtemp.T, Suse), Suse.T), wtemp), wtemp)
                 a = a / (np.dot(wtemp, wtemp) ** 2)
-
                 b = np.dot(np.dot(Suse, Suse.T), wtemp)
                 b = b / (np.dot(wtemp.T, wtemp))
-
                 self.W[:, c] = wtemp + self.mu*(a+b-lagrange*wtemp)
 
-                # self.W[:,c] = self.W[:,c] /norm(self.W[:,c])
-                t = np.dot(x, self.W[:, c]) /norm(self.W[:,c])
+                t = np.dot(x, self.W[:, c]) # /norm(self.W[:,c])
+
                 xhat = t*self.P[:, c]
                 ep1 = x-xhat
                 self.P[:, c] = self.P[:, c] + self.mu * ep1 * t
@@ -161,10 +147,13 @@ class OLPLS(BaseEstimator):
                 yhat = t*self.C[:, c]
                 ec1 = y-yhat
                 self.C[:, c] = self.C[:, c] + self.mu * ec1 * t
+
                 x = x - t*self.P[:, c]
                 y = y - t*self.C[:, c]
 
+
             self.n = self.n + 1
+
         return self
 
     def transform(self, X, Y=None, copy=True):
@@ -178,15 +167,12 @@ class OLPLS(BaseEstimator):
             pinv(np.dot(self.P.T, self.W), check_finite=False),
         )
         self.coef_ = np.dot(self.x_rotations_, self.C.T)
-        self.intercept_ = self._y_means
 
     def predict(self,X):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
         self._comp_coef()
-        Xc,_ = _CentralizedData(X)
         ypred = X @ self.coef_
-        ypred += self.intercept_
         return ypred
 
 if __name__ == '__main__':

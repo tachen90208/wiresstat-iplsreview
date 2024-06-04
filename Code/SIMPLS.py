@@ -8,6 +8,7 @@ from sklearn.utils import check_array
 from sklearn.utils.validation import FLOAT_DTYPES
 from pytictoc import TicToc
 from scipy.linalg import pinv
+from sklearn.metrics import r2_score
 
 def _CentralizedData(x):
     x_mean = x.mean(axis=0)
@@ -181,12 +182,12 @@ class SIMPLS(BaseEstimator):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
         self._comp_coef()
-        Xc,_ = _CentralizedData(X)
+        X -= self._x_mean
         ypred = Xc @ self.coef_
         ypred += self.intercept_
         return ypred
 
     def score(self, X, y):
-        from sklearn.metrics import r2_score
+
         y_pred = self.predict(X)
         return r2_score(y, y_pred)

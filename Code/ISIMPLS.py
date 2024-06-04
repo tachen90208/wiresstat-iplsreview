@@ -96,7 +96,7 @@ class ISIMPLS(BaseEstimator):
     def transform(self, X, Y=None, copy=True):
         """Apply the dimension reduction learned on the train data."""
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
-        X -= self.mu_x
+        X -= self._x_mean
         return X @ self.x_rotations_
 
     def _comp_coef(self):
@@ -118,8 +118,8 @@ class ISIMPLS(BaseEstimator):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
         self._comp_coef()
-        Xc,_ = _CentralizedData(X)
-        ypred = Xc @ self.coef_
+        X -= self._x_mean
+        ypred = X @ self.coef_
         ypred += self.intercept_
         return ypred
 
@@ -212,7 +212,7 @@ class ISIMPLS2(BaseEstimator):
     def transform(self, X, Y=None, copy=True):
         """Apply the dimension reduction learned on the train data."""
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
-        X -= self.mu_x
+        X -= self._x_mean
         return X @ self.x_rotations_
 
     def _comp_coef(self):
@@ -234,17 +234,6 @@ class ISIMPLS2(BaseEstimator):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
         self._comp_coef()
-        Xc,_ = _CentralizedData(X)
-        ypred = Xc @ self.coef_
-        ypred += self.intercept_
-        return ypred
-
-    def predict(self, X, copy=True):
-        X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
-
-        self._comp_coef()
-        Xc,_ = _CentralizedData(X)
+        X -= self._x_mean
         ypred = X @ self.coef_
-        ypred = Xc @ self.coef_
         ypred += self.intercept_
-        return ypred

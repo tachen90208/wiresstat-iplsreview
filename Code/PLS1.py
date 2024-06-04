@@ -180,7 +180,7 @@ class IPLS1(BaseEstimator):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
         self._comp_coef()
-        Xc,_ = _CentralizedData(X)
-        ypred = Xc @ self.coef_
+        X -= self._x_mean
+        ypred = X @ self.coef_
         ypred += self.intercept_
         return ypred
