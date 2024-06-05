@@ -205,7 +205,7 @@ class ISIMPLS2(BaseEstimator):
         self._x_mean = f1*self._x_mean + f2*_x_mean2
         self._y_mean = f1*self._y_mean + f2*_y_mean2
         # self.tim_upd += self.tic_upd.tocvalue()
-        # computer the new project matrxi
+        # computer the new project matrix
         self.W = self._PLS2_ProjMat(self.S.copy())
         return self
 
@@ -237,3 +237,4 @@ class ISIMPLS2(BaseEstimator):
         X -= self._x_mean
         ypred = X @ self.coef_
         ypred += self.intercept_
+        return ypred

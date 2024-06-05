@@ -183,7 +183,7 @@ class SIMPLS(BaseEstimator):
 
         self._comp_coef()
         X -= self._x_mean
-        ypred = Xc @ self.coef_
+        ypred = X @ self.coef_
         ypred += self.intercept_
         return ypred
 
