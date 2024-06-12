@@ -106,8 +106,8 @@ class SGDPLS(BaseEstimator):
                 self.x_loadings[:, c] = self.x_loadings[:, c] + X[i] * t
                 self.y_loadings[:, c] = self.y_loadings[:, c] + Y[i] * t
 
-                X[i] -= np.dot(t, self.x_loadings[:, c])
-                self.x_rotations[:, c] = self.x_rotations[:, c] + (X[i] * Y[i])
+                # X[i] -= np.dot(t, self.x_loadings[:, c])
+                # self.x_rotations[:, c] = self.x_rotations[:, c] + (X[i] * Y[i])
 
     def transform(self, X, Y=None, copy=True):
         """Apply the dimension reduction learned on the train data."""

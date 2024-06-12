@@ -112,7 +112,7 @@ class OLPLS(BaseEstimator):
             b = b / (np.dot(wtemp.T, wtemp))
             self.W[:, 0] = wtemp + self.mu * (a + b - lagrange*wtemp)
 
-            t = np.dot(x, self.W[:, 0]) # /norm(self.W[:,0])
+            t = np.dot(x, self.W[:, 0])
 
             xhat = t*self.P[:, 0]
             ep1 = x-xhat
@@ -138,7 +138,7 @@ class OLPLS(BaseEstimator):
                 b = b / (np.dot(wtemp.T, wtemp))
                 self.W[:, c] = wtemp + self.mu*(a+b-lagrange*wtemp)
 
-                t = np.dot(x, self.W[:, c]) # /norm(self.W[:,c])
+                t = np.dot(x, self.W[:, c])
 
                 xhat = t*self.P[:, c]
                 ep1 = x-xhat
