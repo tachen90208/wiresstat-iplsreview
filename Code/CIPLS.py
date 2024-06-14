@@ -107,15 +107,15 @@ class CIPLS(BaseEstimator):
             self.x_weights_ = x_weights_.T
         return self
 
-    def transform_orig(self, X, Y=None, copy=True):
+    def transform(self, X, Y=None, copy=True):
         """Apply the dimension reduction learned on the train data."""
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
         mean = 1 / self.n * self.sum_x
         X -= mean
-        self.w_rotation = np.zeros(self.x_rotations.shape)
+        self.w_rotation = np.zeros(self.x_weights_.T.shape)
 
         for c in range(0, self.n_components):
-            self.w_rotation[c] = self.normalize(self.x_rotations[c])
+            self.w_rotation[c] = self.normalize(self.x_weights_.T[c])
 
         return np.dot(X, self.w_rotation.T)
 

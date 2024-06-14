@@ -57,14 +57,12 @@ class ISIMPLS(BaseEstimator):
         p = self.C @ W_rotations[0,:]
         V[0,:] = p/norm(p)
         S = S - V[0,:]*np.dot(V[0,:],S)
-        self.x_loadings_[:,0] = p
         for k in range(1,self.n_components):
             W_rotations[k,:] = S/norm(S)
             p = self.C @ W_rotations[k,:]
             V[k,:] = p - V[:k,:].T @ (V[:k,:] @ p)
             V[k,:] = V[k,:]/norm(V[k,:])
             S = S - V[k,:]*np.dot(V[k,:],S)
-            self.x_loadings_[:,k] = p
         return W_rotations.T
 
     def fit(self,X,y):
@@ -72,8 +70,6 @@ class ISIMPLS(BaseEstimator):
         # y = check_array(y, dtype=FLOAT_DTYPES, copy=self.copy)
         if self.n == 0:
             self.n_features = X.shape[1]
-            self.x_loadings_ = np.zeros((self.n_features, self.n_components))
-            self.y_loadings_ = np.zeros((1, self.n_components))
             self.C = np.zeros((self.n_features, self.n_features))
             self.S = np.zeros((self.n_features,))
 
@@ -89,7 +85,7 @@ class ISIMPLS(BaseEstimator):
         # update the mean
         self._x_mean = f1*self._x_mean + f2*_x_mean2
         self._y_mean = f1*self._y_mean + f2*_y_mean2
-        # computer the new project matrxi
+        # computer the new project matrix
         self.W = self._PLS1_ProjMat(self.S.copy())
         return self
 
@@ -215,25 +211,32 @@ class ISIMPLS2(BaseEstimator):
         X -= self._x_mean
         return X @ self.x_rotations_
 
-    def _comp_coef(self):
+    def _comp_coef(self,n_components=0):
+        if n_components == 0:
+            n_components = self.n_components
+        n_components = min(n_components, self.n_components)
 
+        W = self.W[:,:n_components]
         self.x_rotations_ = np.dot(
-            self.W,
-            pinv(np.dot(self.W.T,
-                         np.dot(self.n*self.C, self.W)), check_finite=False),
+            W,
+            pinv(np.dot(W.T,
+                         np.dot(self.n*self.C, W)), check_finite=False),
         )
 
-        self.y_loadings_ = np.dot(self.S.T, self.W)
+        self.y_loadings_ = np.dot(self.S.T, W)
 
         self.coef_ = np.dot(self.x_rotations_, self.y_loadings_.T)
 
         self.intercept_ = self._y_mean
         return self
 
-    def predict(self, X, copy=True):
+    def predict(self, X, n_components=0, copy=True):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
+        if n_components == 0:
+            n_components = self.n_components
+        n_components = min(n_components, self.n_components)
 
-        self._comp_coef()
+        self._comp_coef(n_components)
         X -= self._x_mean
         ypred = X @ self.coef_
         ypred += self.intercept_
