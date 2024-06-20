@@ -161,17 +161,25 @@ class OLPLS(BaseEstimator):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
         return np.dot(X, self.W)
 
-    def _comp_coef(self):
-        self.x_rotations_ = np.dot(
-            self.W,
-            pinv(np.dot(self.P.T, self.W), check_finite=False),
-        )
-        self.coef_ = np.dot(self.x_rotations_, self.C.T)
+    def _comp_coef(self, n_components):
+        W = self.W[:,:n_components]
+        P = self.P[:,:n_components]
+        C = self.C[:,:n_components]
 
-    def predict(self,X):
+        self.x_rotations_ = np.dot(
+            W,
+            pinv(np.dot(P.T, W), check_finite=False),
+        )
+        self.coef_ = np.dot(self.x_rotations_, C.T)
+
+    def predict(self,X,n_components):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
-        self._comp_coef()
+        if n_components == 0:
+            n_components = self.n_components
+        n_components = min(n_components, self.n_components)
+
+        self._comp_coef(n_components)
         ypred = X @ self.coef_
         return ypred
 
