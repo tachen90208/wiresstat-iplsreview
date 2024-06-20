@@ -169,25 +169,31 @@ class SIMPLS(BaseEstimator):
         X -= self._x_mean
         return np.dot(X, self.x_rotations_)
 
-    def _comp_coef(self):
+    def _comp_coef(self, n_components):
+        x_weights = self.x_weights_[:,:n_components]
+        x_loadings = self.x_loadings_[:,:n_components]
+        y_loadings = self.y_loadings_[:,:n_components]
+
         self.x_rotations_ = np.dot(
-            self.x_weights_,
-            pinv(np.dot(self.x_loadings_.T, self.x_weights_), check_finite=False),
+            x_weights,
+            pinv(np.dot(x_loadings.T, x_weights), check_finite=False),
         )
 
-        self.coef_ = np.dot(self.x_rotations_, self.y_loadings_.T)
+        self.coef_ = np.dot(self.x_rotations, y_loadings.T)
         self.intercept_ = self._y_mean
 
-    def predict(self, X, copy=True):
+    def predict(self, X, n_components=0, copy=True):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
+        if n_components == 0:
+            n_components = self.n_components
+        n_components = min(n_components, self.n_components)
 
-        self._comp_coef()
+        self._comp_coef(n_components)
         X -= self._x_mean
         ypred = X @ self.coef_
         ypred += self.intercept_
         return ypred
 
     def score(self, X, y):
-
         y_pred = self.predict(X)
         return r2_score(y, y_pred)
