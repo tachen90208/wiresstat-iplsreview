@@ -16,14 +16,21 @@ def _CentralizedData(x):
     return xc, x_mean
 
 class SVDPLS(PLSSVD):
-    def _comp_coef(self):
-        self.coef_ = np.dot(self.x_weights_, self.y_weights_.T)
+    def _comp_coef(self, n_components):
+        x_weights = self.x_weights_[:,:n_components]
+        y_weights = self.y_weights_[:,:n_components]
+
+        self.coef_ = np.dot(x_weights, y_weights.T)
         self.intercept_ = self._y_mean
 
-    def predict(self, X, copy=True):
+    def predict(self, X, n_components=0, copy=True):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
-        self._comp_coef()
+        if n_components == 0:
+            n_components = self.n_components
+        n_components = min(n_components, self.n_components)
+
+        self._comp_coef(n_components)
         X -= self._x_mean
         ypred = X @ self.coef_
         ypred += self.intercept_
@@ -142,14 +149,21 @@ class ISVDPLS(BaseEstimator):
         X -= self.x_mean
         return np.dot(X, self.x_weights_)
 
-    def _comp_coef(self):
-        self.coef_ = np.dot(self.x_weights_, self.y_weights_.T)
+    def _comp_coef(self, n_components):
+        x_weights = self.x_weights_[:,:n_components]
+        y_weights = self.y_weights_[:,:n_components]
+
+        self.coef_ = np.dot(x_weights, y_weights.T)
         self.intercept_ = self._y_mean
 
-    def predict(self, X, copy=True):
+    def predict(self, X, n_components=0, copy=True):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
-        self._comp_coef()
+        if n_components == 0:
+            n_components = self.n_components
+        n_components = min(n_components, self.n_components)
+
+        self._comp_coef(n_components)
         X -= self._x_mean
         ypred = X @ self.coef_
         ypred += self.intercept_
