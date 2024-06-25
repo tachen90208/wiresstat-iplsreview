@@ -88,7 +88,7 @@ class SIMPLS(BaseEstimator):
         n_samples, n_features = X.shape
 
         self.n_features = n_features
-        self.x_rotations = np.zeros((n_features, self.n_components))
+        self.x_rotations_ = np.zeros((n_features, self.n_components))
         self.x_loadings_ = np.zeros((n_features, self.n_components))
 
         # W_rotations = np.zeros((self.n_components,n_features))
@@ -179,7 +179,7 @@ class SIMPLS(BaseEstimator):
             pinv(np.dot(x_loadings.T, x_weights), check_finite=False),
         )
 
-        self.coef_ = np.dot(self.x_rotations, y_loadings.T)
+        self.coef_ = np.dot(self.x_rotations_, y_loadings.T)
         self.intercept_ = self._y_mean
 
     def predict(self, X, n_components=0, copy=True):
