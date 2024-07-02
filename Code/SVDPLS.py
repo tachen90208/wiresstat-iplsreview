@@ -17,6 +17,10 @@ def _CentralizedData(x):
 
 class SVDPLS(PLSSVD):
     def _comp_coef(self, n_components):
+        if n_components == 0:
+            n_components = self.n_components
+        n_components = min(n_components, self.n_components)
+
         x_weights = self.x_weights_[:,:n_components]
         y_weights = self.y_weights_[:,:n_components]
 
@@ -82,7 +86,7 @@ class ISVDPLS(BaseEstimator):
             self.S = Xc.T @ Yc
 
             # << SVD >>
-            self.U,self.Del,self.Vh = svds(self.S,k=self.H)
+            self.U,self.Del,self.Vh = svds(self.S, k=self.H)
             u  = self.U[:,0].ravel()
             vh = self.Vh[0,:]
             # << Adjusted weights step >>
