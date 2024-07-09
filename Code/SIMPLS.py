@@ -105,7 +105,7 @@ class SIMPLS(BaseEstimator):
         Xc,self._x_mean = _CentralizedData(X)
         Yc,self._y_mean = _CentralizedData(Y)
         self.S = Xc.T @ Yc
-        S = Xc.T @ Yc
+        S = self.S.copy()
         # self.tim_upd += self.tic_upd.tocvalue()
         if (len(Y.shape) == 1):
             x_weights_[0,:] = S/norm(S)
