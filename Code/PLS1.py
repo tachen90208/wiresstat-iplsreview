@@ -64,7 +64,7 @@ class PLS1(BaseEstimator):
         """Apply the dimension reduction learned on the train data."""
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
-        X -=  np.mean(X,axis=0)
+        X -= self._x_mean
         return np.dot(X, self.W)
 
     def _comp_coef(self):

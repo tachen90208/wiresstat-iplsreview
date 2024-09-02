@@ -67,13 +67,14 @@ class CIPLS(BaseEstimator):
         n_samples, n_features = X.shape
 
         if self.n == 0:
-            x_weights_ = np.zeros((self.n_components, n_features))
+            self.x_weights_ = np.zeros((n_features, self.n_components))
             self.x_loadings_ = np.zeros((n_features, self.n_components))
             self.y_loadings_ = np.zeros((Y.shape[1], self.n_components))
             self.n_features = n_features
             self.eign_values = np.zeros((self.n_components))
             self.p = [0] * self.n_components
 
+        W = self.x_weights_.T
         for j in range(0, n_samples):
             self.n = self.n + 1
             u = X[j]
@@ -88,23 +89,23 @@ class CIPLS(BaseEstimator):
                 mean_x = 1 / self.n * self.sum_x
                 u = u - mean_x
                 delta_x = mean_x - old_mean
-                x_weights_[0] = x_weights_[0] - delta_x * self.sum_y
-                x_weights_[0] = x_weights_[0] + (u * l)
+                W[0] = W[0] - delta_x * self.sum_y
+                W[0] = W[0] + (u * l)
                 self.sum_y = self.sum_y + l
 
-                t = np.dot(u, self.normalize(x_weights_[0].T))
+                t = np.dot(u, self.normalize(W[0].T))
                 self.x_loadings_[:, 0] += (u * t)
                 self.y_loadings_[:, 0] += (l * t)
 
                 for c in range(1, self.n_components):
                     u -= np.dot(t, self.x_loadings_[:, c - 1])
                     l -= np.dot(t, self.y_loadings_[:, c - 1])
-                    x_weights_[c]   += (u * l)
+                    W[c]   += (u * l)
                     self.x_loadings_[:, c] += (u * t)
                     self.y_loadings_[:, c] += (l * t)
-                    t = np.dot(u, self.normalize(x_weights_[c].T))
+                    t = np.dot(u, self.normalize(W[c].T))
 
-            self.x_weights_ = x_weights_.T
+        self.x_weights_ = W.T
         return self
 
     def transform(self, X, Y=None, copy=True):

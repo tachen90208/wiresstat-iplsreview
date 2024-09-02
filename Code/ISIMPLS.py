@@ -105,7 +105,7 @@ class ISIMPLS(BaseEstimator):
         """Apply the dimension reduction learned on the train data."""
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
         X -= self._x_mean
-        return X @ self.x_rotations_
+        return np.dot(X, self.W)
 
     def _comp_coef(self):
 
@@ -223,7 +223,7 @@ class ISIMPLS2(BaseEstimator):
         """Apply the dimension reduction learned on the train data."""
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
         X -= self._x_mean
-        return X @ self.x_rotations_
+        return np.dot(X, self.W)
 
     def _comp_coef(self,n_components=0):
         if n_components == 0:

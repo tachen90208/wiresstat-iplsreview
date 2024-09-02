@@ -167,7 +167,7 @@ class SIMPLS(BaseEstimator):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
         X -= self._x_mean
-        return np.dot(X, self.x_rotations_)
+        return np.dot(X, self.x_weights_)
 
     def _comp_coef(self, n_components):
         x_weights = self.x_weights_[:,:n_components]
