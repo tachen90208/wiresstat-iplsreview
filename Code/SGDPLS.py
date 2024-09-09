@@ -109,6 +109,9 @@ class SGDPLS(BaseEstimator):
                 # X[i] -= np.dot(t, self.x_loadings[:, c])
                 # self.x_rotations[:, c] = self.x_rotations[:, c] + (X[i] * Y[i])
 
+                x_tmp = X[i] - np.dot(t, self.x_loadings[:, c])
+                self.x_rotations[:, c] = self.x_rotations[:, c] + (x_tmp * Y[i])
+
     def transform(self, X, Y=None, copy=True):
         """Apply the dimension reduction learned on the train data."""
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
@@ -118,7 +121,7 @@ class SGDPLS(BaseEstimator):
 
     def _comp_coef(self):
         self.U = self.normalize(self.x_rotations)
-        self.coef_ = np.dot(self.U, self.y_loadings_.T)
+        self.coef_ = np.dot(self.U, self.y_loadings.T)
 
     def predict(self, X, copy=True):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)

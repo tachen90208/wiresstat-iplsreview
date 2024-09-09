@@ -55,9 +55,9 @@ class PLS1(BaseEstimator):
 
         Xc, self._x_mean = _CentralizedData(X)
         yc, self._y_mean = _CentralizedData(y)
-        self.C = Xc.T @ Xc
+        self.C = (Xc.T @ Xc)/self.n
         self.S = Xc.T @ yc
-        self.W = self._Arnoldi(self.C/self.n,self.S)
+        self.W = self._Arnoldi(self.C, self.S)
         return self
 
     def transform(self, X, copy=True):
@@ -65,16 +65,15 @@ class PLS1(BaseEstimator):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
         X -= self._x_mean
+
         return np.dot(X, self.W)
 
     def _comp_coef(self):
-
-
         self._y_loadings = np.dot(self.S.T, self.W)
 
         self.coef_ =  np.dot(
             self.W,
-            pinv( np.dot(self.W.T, np.dot(self.C, self.W)))
+            pinv( np.dot(self.W.T, np.dot(self.C*self.n, self.W)))
         )
         self.coef_ = np.dot(self.coef_, self._y_loadings.T)
         self.intercept_ = self._y_mean
@@ -84,8 +83,8 @@ class PLS1(BaseEstimator):
         X = check_array(X, copy=copy, dtype=FLOAT_DTYPES)
 
         self._comp_coef()
-        Xc,_ = _CentralizedData(X)
-        ypred = Xc @ self.coef_
+        X -= self._x_mean
+        ypred = X @ self.coef_
         ypred += self.intercept_
         return ypred
 
