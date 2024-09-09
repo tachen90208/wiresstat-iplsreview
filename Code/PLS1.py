@@ -1,5 +1,3 @@
-"""IPLS1."""
-
 import numpy as np
 from numpy.linalg import norm,inv,svd
 from scipy.sparse.linalg import svds
